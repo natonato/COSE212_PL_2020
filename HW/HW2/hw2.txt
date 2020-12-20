@@ -1,0 +1,336 @@
+1.
+let sigma : (int -> int) -> int -> int -> int
+= fun f a b ->
+let rec test f a b =
+match a=b with
+| true -> f a
+| false -> (f a) + (test f (a+1) b)
+in
+test f a b;;
+
+2.
+let forall : ('a -> bool) -> 'a list -> bool
+= fun f lst ->
+let rec test f lst =
+match lst with
+| [] -> true
+| h::t ->
+(
+match f h with
+| true -> test f t
+| false -> false
+)
+in test f lst;;
+
+3.
+let double : ('a -> 'a) -> 'a -> 'a
+= fun f ->
+fun x -> f (f x);;
+
+4.
+let rec app : 'a list -> 'a list -> 'a list
+= fun l1 l2 ->
+match l1 with
+| [] -> l2
+| h::t ->
+(match l2 with
+|[] -> l1
+| h2::t2 -> 
+(match h<h2 with
+|true -> [h] @ app t l2
+|false -> (match h=h2 with
+|true -> [h] @ app t t2
+|false -> [h2] @ app l1 t2
+)
+)
+);;
+
+5.
+let rec rem v lst=
+match lst with
+| [] -> []
+| h::t ->(
+match v=h with
+|true -> rem v t
+|false -> [h] @rem v t
+)
+
+let uniq : 'a list -> 'a list
+= fun lst -> 
+let rec test lst =
+match lst with
+| []-> lst
+| h::t-> [h] @ (test (rem h t))
+in test lst;;
+
+6.
+let reduce : ('a -> 'b -> 'c -> 'c) -> 'a list -> 'b list -> 'c -> 'c
+= fun f l1 l2 accu ->
+let rec test f l1 l2 accu=
+match l1 with
+| [] -> accu
+| h::t ->(
+match l2 with
+| [] -> accu
+| h2::t2 -> test f t t2 (f h h2 accu)
+)
+in test f l1 l2 accu;;
+
+reduce (fun x y z -> x + y * z) [1;2;3] [3;1;2] 5;;
+ 13
+
+7.
+let zipper : int list * int list -> int list
+= fun (l1, l2) -> (* TODO *) 
+let rec test l1 l2 =
+match l1 with
+| []->(match l2 with
+| [] -> []
+| h2::t2 -> h2::test l1 t2)
+| h::t->(match l2 with
+| [] -> h::test t l2
+| h2::t2-> h::h2::test t t2)
+in test l1 l2;;
+
+8.
+type btree = 
+  | Leaf of int
+  | Left of btree
+  | Right of btree
+  | LeftRight of btree * btree;;
+
+let mirror : btree -> btree
+= fun tree -> (*TODO*)
+let rec test tree =
+match tree with
+| Left (tree') -> Right(test tree')
+| Right(tree') -> Left(test tree')
+| LeftRight(leaf', leaf'') -> LeftRight(leaf'', leaf')
+in test tree;;
+
+9.
+type digit = ZERO | ONE
+type bin = digit list
+
+
+let rec rev l=
+match l with
+| [] -> []
+| h::t -> rev t @[h]
+;;
+
+
+
+let rec badd a b carry=
+match rev a with
+| [] ->(
+	match rev b with
+	| [] ->(
+		match carry with
+		| ONE -> [ONE] 
+		| ZERO -> []
+	)
+	| ONE::t2->(
+		match carry with
+		| ONE -> (badd a (rev t2) ONE) @[ZERO]
+		| ZERO -> (badd a (rev t2) ZERO) @[ONE]
+	)
+	| ZERO::t2->(
+		match carry with
+		| ONE -> (badd a (rev t2) ZERO) @[ONE]
+		| ZERO -> (badd a (rev t2) ZERO) @[ZERO]
+	)
+
+)
+| h::t->(
+	match h with
+	| ONE ->(
+		match rev b with
+		| [] -> (
+			match carry with
+			| ONE -> (badd (rev t) b ONE) @[ZERO]
+			| ZERO -> (badd (rev t) b ZERO) @[ONE]
+		)
+		| ONE::t2->(
+			match carry with
+			| ONE -> (badd (rev t) (rev t2) ONE) @[ONE]
+			| ZERO -> (badd (rev t) (rev t2) ONE) @[ZERO]
+		)
+		| ZERO::t2->(
+			match carry with
+			| ONE -> (badd (rev t) (rev t2) ONE) @[ZERO]
+			| ZERO -> (badd (rev t) (rev t2) ZERO) @[ONE]
+		)
+	)
+	| ZERO ->(
+		match rev b with
+		| [] -> (
+			match carry with
+			| ONE -> (badd (rev t) b ZERO) @[ONE]
+			| ZERO -> (badd (rev t) b ZERO) @[ZERO]
+		)
+		| ONE::t2->(
+			match carry with
+			| ONE -> (badd (rev t) (rev t2) ONE) @[ZERO]
+			| ZERO -> (badd (rev t) (rev t2) ZERO) @[ONE]
+		)
+		| ZERO::t2->(
+			match carry with
+			| ONE -> (badd (rev t) (rev t2) ZERO) @[ONE]
+			| ZERO -> (badd (rev t) (rev t2) ZERO) @[ZERO]
+		)
+	)
+);;
+
+
+let bmul : bin -> bin -> bin
+= fun a b -> (* TODO *)
+let rec test a b =
+match rev b with
+| []-> []
+| h::t->(
+match h with
+| ONE -> badd a (test (a@[ZERO]) (rev t)) ZERO
+| ZERO -> test (a@[ZERO]) (rev t)
+)
+in test a b;;
+
+
+
+10.
+type aexp =
+  | Const of int
+  | Var of string
+  | Power of string * int
+  | Times of aexp list
+  | Sum of aexp list
+
+let rec test2 exp x =
+match exp with
+| h::t -> [diff(h, x)]@test2 t x
+| [] -> [];;
+
+ test (Sum t) x]
+ 
+let diff : aexp * string -> aexp
+= fun (exp, x) -> (* TODO *)
+let rec test exp x =
+match exp with
+| Const n' -> Const 0
+| Sum(h::t)->(
+	match t with
+	| [] -> test h x
+	| _ -> Sum([test h x]@test2 t x)
+	)
+| Times(h::t)->(
+	match t with
+	|[] -> Times([test h x])
+	| _ -> Sum[Times([test h x]@t); Times([h]@[test (Sum t) x])]
+	)
+| Power(str', n')->(
+	match str' = x with
+	|true ->Times[Const n'; Power(str', n'-1)]
+	|false -> Const 0 (*2y를 x로 미분->0*)
+	)
+| Var str' -> (
+	match str' = x with
+	| true -> Sum [Times [Const 1]; Times[Var str'; Const 0]] (*x의0승*)
+	| false -> Const 0 (*y를 x로 미분 -> 0*)
+	)
+| _ -> Const 0
+in test exp x;;
+
+
+let diff : aexp * string -> aexp
+= fun (exp, x) -> (* TODO *)
+
+
+
+11.
+type exp =
+  | X
+  | INT of int
+  | ADD of exp * exp
+  | SUB of exp * exp
+  | MUL of exp * exp
+  | DIV of exp * exp
+  | SIGMA of exp * exp * exp
+
+let calculator : exp -> int
+= fun exp -> (* TODO *)
+let rec test exp num=
+match exp with
+| SIGMA(exp', exp'', exp''') ->(
+match test exp' num = test exp'' num with
+|true -> test exp''' (test exp' num)
+|false -> test (SIGMA (ADD(exp', INT 1), exp'', exp''')) num + test exp''' (test exp' num)
+)
+| DIV(exp', exp'') -> test exp' num / test exp'' num
+| MUL(exp', exp'') -> test exp' num * test exp'' num
+| SUB(exp', exp'') -> test exp' num - test exp'' num
+| ADD(exp', exp'') -> test exp' num + test exp'' num
+| INT n' -> n'
+| X -> num
+in test exp 0;;
+
+
+calculator SIGMA(INT 1, INT 10, SUB(MUL(X, X), INT 1));;
+
+12.
+
+type exp = 
+  | V of var
+  | P of var * exp
+  | C of exp * exp
+and var = string
+
+
+
+let rec test2 exp var=
+match exp with
+| [] -> [] true
+| h::t ->(
+	match h=var with
+	| true -> test2 t var
+	| false -> [h]@(test2 t var) false
+);;
+
+let rec test exp =
+match exp with
+| V var'-> [var']
+| P (var', exp') -> test2 (test exp') var'(*delete all var*)
+| C (exp', exp'') -> (test exp')@(test exp'');;
+ 
+let check : exp -> bool
+= fun exp ->
+match test exp with
+| [] -> true
+| _ ->false;;
+
+
+
+
+  let check : exp -> bool
+  = fun exp -> 
+    let rec removeMatch : (var list) -> var -> (var list)
+    = fun l v ->
+      match l with
+      | [] -> []
+      | hd::tl -> 
+        if hd = v then removeMatch tl v
+        else hd::(removeMatch tl v)
+    
+	let rec eval : exp -> (var list)
+    = fun exp ->
+      match exp with
+      | V v -> [v]
+      | P(v,e) -> removeMatch (eval e) v
+      | C(e1,e2) -> (eval e1)@(eval e2);;
+    in if (eval exp) = [] then true
+       else false ;;
+
+
+check (P ("a", C (V "a", P ("b", V "a"))));;
+check (P ("a", V "a"));;
+check (P ("a", C (V "a", P ("b", V "c"))));;
+
