@@ -1,0 +1,197 @@
+type program = exp
+and exp = 
+  | UNIT
+  | TRUE
+  | FALSE
+  | CONST of int
+  | VAR of var
+  | ADD of exp * exp
+  | SUB of exp * exp
+  | MUL of exp * exp
+  | DIV of exp * exp
+  | EQUAL of exp * exp
+  | LESS of exp * exp
+  | NOT of exp
+  | NIL
+  | CONS of exp * exp      
+  | APPEND of exp * exp
+  | HEAD of exp
+  | TAIL of exp
+  | ISNIL of exp
+  | IF of exp * exp * exp
+  | LET of var * exp * exp
+  | LETREC of var * var * exp * exp
+  | LETMREC of (var * var * exp) * (var * var * exp) * exp
+  | PROC of var * exp
+  | CALL of exp * exp
+  | PRINT of exp
+  | SEQ of exp * exp
+and var = string
+
+exception TypeError
+
+type typ = 
+  | TyUnit 
+  | TyInt 
+  | TyBool 
+  | TyFun of typ * typ 
+  | TyList of typ
+  | TyVar of tyvar
+and tyvar = string
+
+
+(* You can invoke "fresh_tyvar()" to generate a fresh type variable *)
+let tyvar_num = ref 0
+let fresh_tyvar () = (tyvar_num := !tyvar_num + 1; (TyVar ("t" ^ string_of_int !tyvar_num)))
+
+
+module TEnv = struct
+  type t = var -> typ
+  let empty =
+	fun _ -> raise (Failure "Type Env is empty")
+  let extend (x,t) tenv =
+	fun y -> if x = y then t else (tenv y)
+  let find tenv x = tenv x
+end
+
+module Subst = struct
+  type t = (tyvar * typ) list
+  let empty = []
+  let rec find x subst = (
+  match subst with
+  | [] -> raise (Failure "not found")
+  | (h1,h2) :: t -> if x=h1 then h2 else find x t
+  )
+  
+
+  let rec apply : typ -> t -> typ
+  =fun typ subst ->
+    match typ with
+	| TyUnit -> TyUnit
+  | TyInt -> TyInt
+  | TyBool -> TyBool
+  | TyFun (t1,t2) ->
+	  TyFun (apply t1 subst, apply t2 subst)
+	| TyList (t1) -> TyList (apply t1 subst)
+  | TyVar x ->
+      try find x subst
+      with _ -> typ
+
+  let rec map f l =(
+  match l with
+  | [] -> []
+  | h::t -> let r = f h in r :: map f t
+  )
+  let extend tv ty subst =
+    (tv,ty) :: (map (fun (x,t) ->(x, apply t [(tv,ty)])) subst)
+end
+
+type typ_eqn = (typ * typ) list
+
+let rec gen_equations : TEnv.t -> exp -> typ -> typ_eqn
+ = fun tenv e ty -> 
+  match e with
+	| UNIT -> [(ty, TyUnit)]
+	| TRUE -> [(ty, TyBool)]
+	| FALSE -> [(ty, TyBool)]
+  | CONST (n) -> [(ty, TyInt)]
+  | VAR (x) -> [(ty, tenv x)]
+  | ADD (e1,e2) -> ([(ty, TyInt)]) @ (gen_equations tenv e1 TyInt) @ (gen_equations tenv e2 TyInt)
+  | SUB (e1,e2) -> ([(ty, TyInt)]) @ (gen_equations tenv e1 TyInt) @ (gen_equations tenv e2 TyInt)
+  | MUL (e1,e2) -> ([(ty, TyInt)]) @ (gen_equations tenv e1 TyInt) @ (gen_equations tenv e2 TyInt)
+  | DIV (e1,e2) -> ([(ty, TyInt)]) @ (gen_equations tenv e1 TyInt) @ (gen_equations tenv e2 TyInt)
+	| EQUAL (e1,e2) ->
+	  let t1 = fresh_tyvar() in
+		([(ty, TyBool)]) @ (gen_equations tenv e1 t1) @ (gen_equations tenv e2 t1)
+	| LESS (e1,e2) -> ([(ty, TyBool)]) @ (gen_equations tenv e1 TyInt) @ (gen_equations tenv e2 TyInt)
+  | NOT (e1) -> ([(ty, TyBool)]) @ (gen_equations tenv e1 TyBool)
+	| NIL ->
+	  let t1 = fresh_tyvar() in
+		[(ty, TyList(t1))]
+	| CONS(e1,e2) ->
+	  let t1 = fresh_tyvar() in
+		([(ty, TyList(t1))]) @ (gen_equations tenv e1 t1) @ (gen_equations tenv e2 (TyList(t1)))
+	| APPEND(e1,e2) ->
+	  let t1 = fresh_tyvar() in
+		([(ty, TyList(t1))]) @ (gen_equations tenv e1 (TyList(t1))) @ (gen_equations tenv e2 (TyList(t1)))
+	| HEAD (e1) -> (gen_equations tenv e1 (TyList(ty)))
+	| TAIL (e1) ->
+	  let t1 = fresh_tyvar() in
+		([(ty, TyList(t1))])@(gen_equations tenv e1 ty)
+	| ISNIL (e1) ->
+	  let t1 = fresh_tyvar() in
+		([(ty, TyBool)]) @ (gen_equations tenv e1 (TyList(t1)))
+  | IF(e1,e2,e3) -> (gen_equations tenv e1 TyBool) @ (gen_equations tenv e2 ty) @ (gen_equations tenv e3 ty)
+  | LET (v1,e1,e2) ->
+	  let t1 = fresh_tyvar() in
+		(gen_equations tenv e1 t1) @ (gen_equations (TEnv.extend(v1,t1) tenv) e2 ty)
+  | LETREC (f,x,e1,e2) ->
+      let t1 = fresh_tyvar() in
+		let t2 = fresh_tyvar() in
+			(gen_equations (TEnv.extend(f,TyFun(t2,t1)) (TEnv.extend(x,t2) tenv)) e1 t1) @ (gen_equations (TEnv.extend(f,TyFun(t2,t1)) tenv) e2 ty)
+  | LETMREC ((f1,x1,e1),(f2,x2,e2),e3) ->
+	  let t1 = fresh_tyvar() in
+		let t2 = fresh_tyvar() in
+			let t3 = fresh_tyvar() in
+				let t4 = fresh_tyvar() in
+					(gen_equations (TEnv.extend(f2, TyFun(t4, t3)) (TEnv.extend(f1, TyFun(t2, t1)) (TEnv.extend(x1,t2) tenv))) e1 t1)@
+					(gen_equations (TEnv.extend(f1, TyFun(t2, t1)) (TEnv.extend(f2, TyFun(t4, t3)) (TEnv.extend(x2,t4) tenv))) e2 t3)@
+					(gen_equations (TEnv.extend (f1, TyFun(t2,t1)) (TEnv.extend(f2, TyFun(t4, t3)) tenv)) e3 ty)
+  | PROC (v1,e1) ->
+      let t1 = fresh_tyvar() in
+		let t2 = fresh_tyvar() in
+			([(ty, TyFun(t1,t2))]) @ (gen_equations (TEnv.extend(v1,t1) tenv) e1 t2)
+  | CALL (e1,e2) ->
+	  let t1 = fresh_tyvar() in
+		(gen_equations tenv e1 (TyFun(t1,ty))) @ (gen_equations tenv e2 t1)
+	| PRINT (e1) ->
+	  let t1 = fresh_tyvar() in
+		([(ty, TyUnit)]) @ (gen_equations tenv e1 t1)
+	| SEQ (e1, e2) ->
+	  let t1 = fresh_tyvar() in 
+		let t2 = fresh_tyvar() in
+			([(ty, t1)]) @ (gen_equations tenv e1 t2) @ (gen_equations tenv e2 t1)
+	| _ -> raise TypeError
+
+
+let rec unify : typ -> typ -> Subst.t -> Subst.t
+ = fun t1 t2 s -> 
+  match (t1,t2) with
+	| (TyUnit, TyUnit) -> s
+  | (TyInt,TyInt) -> s
+  | (TyBool,TyBool) -> s
+	| (TyVar a, TyVar b) -> if a=b then s else Subst.extend a (TyVar b) s
+  | (TyVar a,t) -> 
+      if occur a t then raise TypeError
+      else Subst.extend a t s
+  | (t,TyVar a) -> unify (TyVar a) t s
+  | (TyFun (t1,t2), TyFun (tl',t2')) ->
+	  let s' = unify t1 tl' s in
+		let t1'' = (Subst.apply t2 s') in 
+			let t2'' = (Subst.apply t2' s') in
+				unify t1'' t2'' s'
+	| (TyList(t1), TyList(t2)) -> unify t1 t2 s
+  | (_,_) -> raise TypeError
+and occur = fun a t -> 
+  match t with
+  | TyVar t' -> a = t'
+  | TyFun (e1,e2) -> (occur a e1) || (occur a e2)
+	| TyList (e1) -> (occur a e1)
+  | _ -> false
+
+						
+let rec solve = fun eqn s -> 
+  match eqn with
+  | [] -> s
+  | (t1,t2) :: u ->
+		let s' = unify (Subst.apply t1 s) (Subst.apply t2 s) s in
+			solve u s'
+
+
+let typeof : exp -> typ
+ = fun exp ->
+  let new_tv = fresh_tyvar () in
+	let eqns = gen_equations TEnv.empty exp new_tv in
+		let subst = solve eqns Subst.empty in
+			let ty = Subst.apply new_tv subst in
+				ty
